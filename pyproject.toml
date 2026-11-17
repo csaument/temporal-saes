@@ -3,7 +3,7 @@ name = "temporal-saes"
 version = "0.1.0"
 description = ""
 authors = [{ name = "Alex Oesterling" }]
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11,<3.14"
 readme = "README.md"
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -11,10 +11,10 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "torch",
-    "torchaudio",
-    "torchvision",
-    "nnsight>=0.3.0,<0.4.0",
+    "torch==2.15.0",
+    "torchaudio==2.11.1",
+    "torchvision==0.29.2",
+    "nnsight>=0.8.2,<0.9",
     "dictionary-learning",
     "scikit-learn>=1.7.1,<2",
     "numpy>=1.26,<2",
@@ -33,7 +33,7 @@ dependencies = [
 
 [[tool.uv.index]]
 name = "torch"
-url = "https://download.pytorch.org/whl/cu128"
+url = "https://download.pytorch.org/whl/cu132"
 explicit = true
 
 [tool.uv.sources]
