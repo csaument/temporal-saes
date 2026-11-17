@@ -60,7 +60,9 @@ class StepFunction(autograd.Function):
         bandwidth = bandwidth_tensor.item()
         x_grad = torch.zeros_like(x)
         threshold_grad = (
-            -(1.0 / bandwidth) * RectangleFunction.apply((x - threshold) / bandwidth) * grad_output
+            -(1.0 / bandwidth)
+            * RectangleFunction.apply((x - threshold) / bandwidth)
+            * grad_output
         )
         return x_grad, threshold_grad, None  # None for bandwidth
 
@@ -86,7 +88,9 @@ class JumpReluTrainer(nn.Module, SAETrainer):
         bandwidth: float = 0.001,
         sparsity_penalty: float = 1.0,
         warmup_steps: int = 1000,  # lr warmup period at start of training and after each resample
-        sparsity_warmup_steps: Optional[int] = 2000,  # sparsity warmup period at start of training
+        sparsity_warmup_steps: Optional[
+            int
+        ] = 2000,  # sparsity warmup period at start of training
         decay_start: Optional[int] = None,  # decay learning rate after this many steps
         target_l0: float = 20.0,
         device: str = "cpu",
@@ -124,7 +128,9 @@ class JumpReluTrainer(nn.Module, SAETrainer):
         ).to(self.device)
 
         # Parameters from the paper
-        self.optimizer = torch.optim.Adam(self.ae.parameters(), lr=lr, betas=(0.0, 0.999), eps=1e-8)
+        self.optimizer = torch.optim.Adam(
+            self.ae.parameters(), lr=lr, betas=(0.0, 0.999), eps=1e-8
+        )
 
         lr_fn = get_lr_schedule(
             steps,
@@ -134,13 +140,17 @@ class JumpReluTrainer(nn.Module, SAETrainer):
             sparsity_warmup_steps=sparsity_warmup_steps,
         )
 
-        self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lr_fn)
+        self.scheduler = torch.optim.lr_scheduler.LambdaLR(
+            self.optimizer, lr_lambda=lr_fn
+        )
 
         self.sparsity_warmup_fn = get_sparsity_warmup_fn(steps, sparsity_warmup_steps)
 
         # Purely for logging purposes
         self.dead_feature_threshold = 10_000_000
-        self.num_tokens_since_fired = torch.zeros(dict_size, dtype=torch.long, device=device)
+        self.num_tokens_since_fired = torch.zeros(
+            dict_size, dtype=torch.long, device=device
+        )
         self.dead_features = -1
         self.logging_parameters = ["dead_features"]
 
@@ -170,7 +180,9 @@ class JumpReluTrainer(nn.Module, SAETrainer):
         l0 = StepFunction.apply(f, self.ae.threshold, self.bandwidth).sum(dim=-1).mean()
 
         sparsity_loss = (
-            self.sparsity_coefficient * ((l0 / self.target_l0) - 1).pow(2) * sparsity_scale
+            self.sparsity_coefficient
+            * ((l0 / self.target_l0) - 1).pow(2)
+            * sparsity_scale
         )
         loss = recon_loss + sparsity_loss
 
@@ -194,7 +206,10 @@ class JumpReluTrainer(nn.Module, SAETrainer):
 
         # We must transpose because we are using nn.Parameter, not nn.Linear
         self.ae.W_dec.grad = remove_gradient_parallel_to_decoder_directions(
-            self.ae.W_dec.T, self.ae.W_dec.grad.T, self.ae.activation_dim, self.ae.dict_size
+            self.ae.W_dec.T,
+            self.ae.W_dec.grad.T,
+            self.ae.activation_dim,
+            self.ae.dict_size,
         ).T
         torch.nn.utils.clip_grad_norm_(self.ae.parameters(), 1.0)
 

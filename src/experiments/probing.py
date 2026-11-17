@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import os
@@ -10,6 +11,7 @@ from sklearn.linear_model import LogisticRegression
 
 from src.data import load_activations_and_labels, load_activations_and_labels_sequences
 
+
 def quiver_arrows(labels, SAE_acts):
     num_classes = np.unique(labels).size
     K = 10
@@ -17,7 +19,7 @@ def quiver_arrows(labels, SAE_acts):
     top_indices = set()
     for cls in range(num_classes):
         class_mask = labels == cls
-        class_acts = SAE_acts[class_mask]           # Shape: (N_class, num_latents)
+        class_acts = SAE_acts[class_mask]  # Shape: (N_class, num_latents)
         rest_acts = SAE_acts[~class_mask]
         # Option 1: Use "difference to mean"
         mean_class = np.mean(class_acts, axis=0)
@@ -28,12 +30,13 @@ def quiver_arrows(labels, SAE_acts):
 
     return np.array(list(top_indices))
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoints_path", type=str)
     parser.add_argument("--checkpoint", type=str)
     parser.add_argument("--run_name", type=str)
-    
+
     parser.add_argument("--model", type=str, default="EleutherAI/pythia-160m")
     parser.add_argument("--layer", type=int, default=8)
     parser.add_argument("--dataset", type=str, default="finefineweb")
@@ -42,28 +45,27 @@ if __name__ == "__main__":
 
     print(f"Loading SAEs from {args.checkpoints_path}")
 
-
     device = "cuda:0"
-    model_name =  args.model # can be any Huggingface model
+    model_name = args.model  # can be any Huggingface model
 
-    model = LanguageModel(
-        model_name,
-        device_map=device,
-        dispatch=True
-    )
+    model = LanguageModel(model_name, device_map=device, dispatch=True)
 
     if hasattr(model, "model"):
-        submodule = model.model.layers[args.layer] # gemma
+        submodule = model.model.layers[args.layer]  # gemma
     elif hasattr(model, "gpt_neox"):
-        submodule = model.gpt_neox.layers[args.layer] 
+        submodule = model.gpt_neox.layers[args.layer]
     else:
         print("model doesnt have .model or .gpt_neox attr, check how to access layers")
         exit(1)
 
     if args.run_name == "baseline_model":
-        sae=None
+        sae = None
     else:
-        sae, trainer_cfg = load_dictionary(os.path.join(args.checkpoints_path, f"{args.run_name}/trainer_0"), device, checkpoint_path=args.checkpoint)
+        sae, trainer_cfg = load_dictionary(
+            os.path.join(args.checkpoints_path, f"{args.run_name}/trainer_0"),
+            device,
+            checkpoint_path=args.checkpoint,
+        )
         sae.temporal = False
         sae.eval()
         for param in sae.parameters():
@@ -71,9 +73,24 @@ if __name__ == "__main__":
     for param in model.parameters():
         param.requires_grad = False
 
-    domains = ["christianity", "law", "literature", "economics", "food", "drama_and_film", "health", "mathematics", "medical", "history"]
-    features_total, pos, domains = load_activations_and_labels(model, submodule, sae, args.dataset, chunk=args.chunk, domains=domains)
-    features_seq, sequences = load_activations_and_labels_sequences(model, submodule, sae, args.dataset, chunk=args.chunk, domains=domains)
+    domains = [
+        "christianity",
+        "law",
+        "literature",
+        "economics",
+        "food",
+        "drama_and_film",
+        "health",
+        "mathematics",
+        "medical",
+        "history",
+    ]
+    features_total, pos, domains = load_activations_and_labels(
+        model, submodule, sae, args.dataset, chunk=args.chunk, domains=domains
+    )
+    features_seq, sequences = load_activations_and_labels_sequences(
+        model, submodule, sae, args.dataset, chunk=args.chunk, domains=domains
+    )
     print(features_total.shape)
     print(len(pos), len(domains), len(sequences))
     domain_indices = np.unique(domains, return_inverse=True)[1]
@@ -91,7 +108,7 @@ if __name__ == "__main__":
     top_indices = quiver_arrows(train_labels, train_features)
     print(len(top_indices), max(top_indices), top_indices)
     train_features = train_features[:, top_indices]
-    test_features  = test_features[:, top_indices]
+    test_features = test_features[:, top_indices]
 
     ### SEMANTICS ###
     print(args)
@@ -125,7 +142,7 @@ if __name__ == "__main__":
     top_indices = quiver_arrows(train_labels, train_features)
     print(len(top_indices), max(top_indices), top_indices)
     train_features = train_features[:, top_indices]
-    test_features  = test_features[:, top_indices]
+    test_features = test_features[:, top_indices]
 
     print(train_features.shape)
     print(test_features.shape)
@@ -148,7 +165,6 @@ if __name__ == "__main__":
     accuracy = probe.score(test_features, test_labels)
     print(f"Probe test accuracy: {accuracy}")
 
-
     ### CONTEXT ###
     train_labels, test_labels = sequences[arr[:3000]], sequences[arr[3000:]]
     train_features, test_features = features_seq[arr[:3000]], features_seq[arr[3000:]]
@@ -156,7 +172,7 @@ if __name__ == "__main__":
     top_indices = quiver_arrows(train_labels, train_features)
     print(len(top_indices), max(top_indices), top_indices)
     train_features = train_features[:, top_indices]
-    test_features  = test_features[:, top_indices]
+    test_features = test_features[:, top_indices]
 
     print(args)
     print(train_features.shape, test_features.shape)

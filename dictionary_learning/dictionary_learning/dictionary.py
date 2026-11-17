@@ -101,7 +101,9 @@ class AutoEncoder(Dictionary, nn.Module):
         self.bias.data *= scale
 
     def normalize_decoder(self):
-        norms = t.norm(self.decoder.weight, dim=0).to(dtype=self.decoder.weight.dtype, device=self.decoder.weight.device)
+        norms = t.norm(self.decoder.weight, dim=0).to(
+            dtype=self.decoder.weight.dtype, device=self.decoder.weight.device
+        )
 
         if t.allclose(norms, t.ones_like(norms)):
             return
@@ -122,7 +124,6 @@ class AutoEncoder(Dictionary, nn.Module):
 
         # Errors can be relatively large in larger SAEs due to floating point precision
         assert t.allclose(initial_output, new_output, atol=1e-4)
-
 
     @classmethod
     def from_pretrained(cls, path, dtype=t.float, device=None, normalize_decoder=True):
@@ -180,7 +181,9 @@ class GatedAutoEncoder(Dictionary, nn.Module):
     An autoencoder with separate gating and magnitude networks.
     """
 
-    def __init__(self, activation_dim, dict_size, initialization="default", device=None):
+    def __init__(
+        self, activation_dim, dict_size, initialization="default", device=None
+    ):
         super().__init__()
         self.activation_dim = activation_dim
         self.dict_size = dict_size
@@ -211,7 +214,9 @@ class GatedAutoEncoder(Dictionary, nn.Module):
         self.decoder.weight = nn.Parameter(dec_weight)
         self.encoder.weight = nn.Parameter(dec_weight.clone().T)
 
-    def encode(self, x: t.Tensor, return_gate:bool=False, normalize_decoder:bool=False):
+    def encode(
+        self, x: t.Tensor, return_gate: bool = False, normalize_decoder: bool = False
+    ):
         """
         Returns features, gate value (pre-Heavyside)
         """
@@ -237,14 +242,19 @@ class GatedAutoEncoder(Dictionary, nn.Module):
 
         return f
 
-    def decode(self, f: t.Tensor, normalize_decoder:bool=False):
+    def decode(self, f: t.Tensor, normalize_decoder: bool = False):
         if normalize_decoder:
             # If the SAE is trained without ConstrainedAdam, the decoder vectors are not normalized
             # Normalizing after encode, and renormalizing before decode to enable comparability
             f = f / self.decoder.weight.norm(dim=0, keepdim=True)
         return self.decoder(f) + self.decoder_bias
 
-    def forward(self, x:t.Tensor, output_features:bool=False, normalize_decoder:bool=False):
+    def forward(
+        self,
+        x: t.Tensor,
+        output_features: bool = False,
+        normalize_decoder: bool = False,
+    ):
         f = self.encode(x)
         x_hat = self.decode(f)
 
@@ -286,10 +296,14 @@ class JumpReluAutoEncoder(Dictionary, nn.Module):
         self.W_enc = nn.Parameter(t.empty(activation_dim, dict_size, device=device))
         self.b_enc = nn.Parameter(t.zeros(dict_size, device=device))
         self.W_dec = nn.Parameter(
-            t.nn.init.kaiming_uniform_(t.empty(dict_size, activation_dim, device=device))
+            t.nn.init.kaiming_uniform_(
+                t.empty(dict_size, activation_dim, device=device)
+            )
         )
         self.b_dec = nn.Parameter(t.zeros(activation_dim, device=device))
-        self.threshold = nn.Parameter(t.ones(dict_size, device=device) * 0.001)  # Appendix I
+        self.threshold = nn.Parameter(
+            t.ones(dict_size, device=device) * 0.001
+        )  # Appendix I
 
         self.apply_b_dec_to_input = False
 

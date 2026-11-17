@@ -4,7 +4,10 @@ from enum import Enum
 import torch as t
 import itertools
 
-from dictionary_learning.trainers.standard import StandardTrainer, StandardTrainerAprilUpdate
+from dictionary_learning.trainers.standard import (
+    StandardTrainer,
+    StandardTrainerAprilUpdate,
+)
 from dictionary_learning.trainers.top_k import TopKTrainer, AutoEncoderTopK
 from dictionary_learning.trainers.batch_top_k import BatchTopKTrainer, BatchTopKSAE
 from dictionary_learning.trainers.gdm import GatedSAETrainer
@@ -174,6 +177,7 @@ class MatryoshkaBatchTopKTrainerConfig(BaseTrainerConfig):
     threshold_beta: float = 0.999
     threshold_start_step: int = 1000  # when to begin tracking the average threshold
 
+
 @dataclass
 class TemporalMatryoshkaBatchTopKTrainerConfig(BaseTrainerConfig):
     dict_size: int
@@ -193,6 +197,7 @@ class TemporalMatryoshkaBatchTopKTrainerConfig(BaseTrainerConfig):
     auxk_alpha: float = 1 / 32
     threshold_beta: float = 0.999
     threshold_start_step: int = 1000  # when to begin tracking the average threshold
+
 
 @dataclass
 class GatedTrainerConfig(BaseTrainerConfig):

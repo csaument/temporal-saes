@@ -1,8 +1,17 @@
 from nnsight import LanguageModel
 from dictionary_learning import EvalActivationBuffer
 from dictionary_learning.trainers import StandardTrainer
-from dictionary_learning.trainers import TemporalBatchTopKTrainer, TemporalBatchTopKSAE, TemporalMatryoshkaBatchTopKTrainer, TemporalMatryoshkaBatchTopKSAE
-from dictionary_learning.utils import load_dictionary, hf_dataset_to_generator, get_submodule
+from dictionary_learning.trainers import (
+    TemporalBatchTopKTrainer,
+    TemporalBatchTopKSAE,
+    TemporalMatryoshkaBatchTopKTrainer,
+    TemporalMatryoshkaBatchTopKSAE,
+)
+from dictionary_learning.utils import (
+    load_dictionary,
+    hf_dataset_to_generator,
+    get_submodule,
+)
 from dictionary_learning.evaluation import evaluate
 from datasets import load_dataset
 import argparse
@@ -11,6 +20,7 @@ import random
 import demo_config
 import json
 import os
+
 
 @t.no_grad()
 def eval_saes(
@@ -46,7 +56,9 @@ def eval_saes(
     n_batches = n_inputs // loss_recovered_batch_size
 
     # generator = hf_dataset_to_generator("NeelNanda/pile-10k")
-    data = iter(load_dataset("monology/pile-uncopyrighted", split="train", streaming=True))
+    data = iter(
+        load_dataset("monology/pile-uncopyrighted", split="train", streaming=True)
+    )
 
     # input_strings = []
     # for i, example in enumerate(generator):
@@ -64,7 +76,7 @@ def eval_saes(
     activation_dim = trainer_cfg["trainer"]["activation_dim"]
 
     activation_buffer = EvalActivationBuffer(
-        data, #iter(input_strings)
+        data,  # iter(input_strings)
         model,
         submodule,
         n_ctxs=1,
@@ -102,6 +114,7 @@ def eval_saes(
     # return the final eval_results for testing purposes
     return eval_results
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--activation-store-dir", type=str, default="activations")
@@ -136,30 +149,33 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("--checkpoints-path", type=str, help="Path to SAE checkpoints")
-    parser.add_argument("--checkpoint", type=str, help="Specific checkpoint. If none will get ae.pt from checkpoints path", default=None)
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        help="Specific checkpoint. If none will get ae.pt from checkpoints path",
+        default=None,
+    )
     args = parser.parse_args()
 
     device = "cuda"
     print(t.cuda.is_available(), t.cuda.device_count())
-    model_name =  args.model # can be any Huggingface model
+    model_name = args.model  # can be any Huggingface model
 
     model = LanguageModel(
         model_name,
         device_map=device,
     )
 
-
     # submodule = model.gpt_neox.layers[args.layer] # gemma: model.model.layers[args.layer]
     if hasattr(model, "model"):
-        submodule = model.model.layers[args.layer] # gemma
+        submodule = model.model.layers[args.layer]  # gemma
     elif hasattr(model, "gpt_neox"):
-        submodule = model.gpt_neox.layers[args.layer] 
+        submodule = model.gpt_neox.layers[args.layer]
     else:
         print("model doesnt have .model or .gpt_neox attr, check how to access layers")
         exit(1)
-    activation_dim = 768 # output dimension of the MLP
+    activation_dim = 768  # output dimension of the MLP
     dictionary_size = 16384
-
 
     trainer_cfg = {
         "trainer": TemporalMatryoshkaBatchTopKTrainer,
@@ -184,19 +200,25 @@ if __name__ == "__main__":
     }
 
     # OPTIONAL: specify a particular checkpoint within the checkpoints folder
-    # checkpoint_path = "checkpoints/ae_16000.pt" 
+    # checkpoint_path = "checkpoints/ae_16000.pt"
     # checkpoint_path = None
-    
+
     # if checkpoint_path is None:
     #     ae, trainer_cfg = load_dictionary(args.checkpoints_path, device=device)#, checkpoint_path=checkpoint_path)
     #     ae.temporal = False
-    #     results_path = os.path.join(args.checkpoints_path, "eval_results.json") 
+    #     results_path = os.path.join(args.checkpoints_path, "eval_results.json")
     # else:
     sae_path = os.path.join(args.checkpoints_path, f"{args.run_name}/trainer_0")
-    ae, trainer_cfg = load_dictionary(sae_path, device=device, checkpoint_path=args.checkpoint)
+    ae, trainer_cfg = load_dictionary(
+        sae_path, device=device, checkpoint_path=args.checkpoint
+    )
     ae.temporal = False
     if args.checkpoint is not None:
-        results_path = os.path.join(sae_path, "checkpoints", args.checkpoint.split("/")[1][:-3]+"eval_results.json") 
+        results_path = os.path.join(
+            sae_path,
+            "checkpoints",
+            args.checkpoint.split("/")[1][:-3] + "eval_results.json",
+        )
     else:
         results_path = os.path.join(sae_path, "eval_results.json")
 

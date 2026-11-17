@@ -1,35 +1,46 @@
 """
 Implements the standard SAE training scheme.
 """
+
 import torch as t
 from typing import Optional
 
-from ..trainers.trainer import SAETrainer, get_lr_schedule, get_sparsity_warmup_fn, ConstrainedAdam
+from ..trainers.trainer import (
+    SAETrainer,
+    get_lr_schedule,
+    get_sparsity_warmup_fn,
+    ConstrainedAdam,
+)
 from ..config import DEBUG
 from ..dictionary import AutoEncoder
 from collections import namedtuple
+
 
 class StandardTrainer(SAETrainer):
     """
     Standard SAE training scheme following Towards Monosemanticity. Decoder column norms are constrained to 1.
     """
-    def __init__(self,
-                 steps: int, # total number of steps to train for
-                 activation_dim: int,
-                 dict_size: int,
-                 layer: int,
-                 lm_name: str,
-                 dict_class=AutoEncoder,
-                 lr:float=1e-3,
-                 l1_penalty:float=1e-1,
-                 warmup_steps:int=1000, # lr warmup period at start of training and after each resample
-                 sparsity_warmup_steps:Optional[int]=2000, # sparsity warmup period at start of training
-                 decay_start:Optional[int]=None, # decay learning rate after this many steps
-                 resample_steps:Optional[int]=None, # how often to resample neurons
-                 seed:Optional[int]=None,
-                 device=None,
-                 wandb_name:Optional[str]='StandardTrainer',
-                 submodule_name:Optional[str]=None,
+
+    def __init__(
+        self,
+        steps: int,  # total number of steps to train for
+        activation_dim: int,
+        dict_size: int,
+        layer: int,
+        lm_name: str,
+        dict_class=AutoEncoder,
+        lr: float = 1e-3,
+        l1_penalty: float = 1e-1,
+        warmup_steps: int = 1000,  # lr warmup period at start of training and after each resample
+        sparsity_warmup_steps: Optional[
+            int
+        ] = 2000,  # sparsity warmup period at start of training
+        decay_start: Optional[int] = None,  # decay learning rate after this many steps
+        resample_steps: Optional[int] = None,  # how often to resample neurons
+        seed: Optional[int] = None,
+        device=None,
+        wandb_name: Optional[str] = "StandardTrainer",
+        submodule_name: Optional[str] = None,
     ):
         super().__init__(seed)
 
@@ -46,7 +57,7 @@ class StandardTrainer(SAETrainer):
         self.ae = dict_class(activation_dim, dict_size)
 
         self.lr = lr
-        self.l1_penalty=l1_penalty
+        self.l1_penalty = l1_penalty
         self.warmup_steps = warmup_steps
         self.sparsity_warmup_steps = sparsity_warmup_steps
         self.steps = steps
@@ -54,7 +65,7 @@ class StandardTrainer(SAETrainer):
         self.wandb_name = wandb_name
 
         if device is None:
-            self.device = 'cuda' if t.cuda.is_available() else 'cpu'
+            self.device = "cuda" if t.cuda.is_available() else "cpu"
         else:
             self.device = device
         self.ae.to(self.device)
@@ -62,20 +73,27 @@ class StandardTrainer(SAETrainer):
         self.resample_steps = resample_steps
         if self.resample_steps is not None:
             # how many steps since each neuron was last activated?
-            self.steps_since_active = t.zeros(self.ae.dict_size, dtype=int).to(self.device)
+            self.steps_since_active = t.zeros(self.ae.dict_size, dtype=int).to(
+                self.device
+            )
         else:
-            self.steps_since_active = None 
+            self.steps_since_active = None
 
-        self.optimizer = ConstrainedAdam(self.ae.parameters(), self.ae.decoder.parameters(), lr=lr)
+        self.optimizer = ConstrainedAdam(
+            self.ae.parameters(), self.ae.decoder.parameters(), lr=lr
+        )
 
-        lr_fn = get_lr_schedule(steps, warmup_steps, decay_start, resample_steps, sparsity_warmup_steps)
+        lr_fn = get_lr_schedule(
+            steps, warmup_steps, decay_start, resample_steps, sparsity_warmup_steps
+        )
         self.scheduler = t.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lr_fn)
 
         self.sparsity_warmup_fn = get_sparsity_warmup_fn(steps, sparsity_warmup_steps)
 
     def resample_neurons(self, deads, activations):
         with t.no_grad():
-            if deads.sum() == 0: return
+            if deads.sum() == 0:
+                return
             print(f"resampling {deads.sum().item()} neurons")
 
             # compute loss for each activation
@@ -92,22 +110,23 @@ class StandardTrainer(SAETrainer):
             # resample first n_resample dead neurons
             deads[deads.nonzero()[n_resample:]] = False
             self.ae.encoder.weight[deads] = sampled_vecs * alive_norm * 0.2
-            self.ae.decoder.weight[:,deads] = (sampled_vecs / sampled_vecs.norm(dim=-1, keepdim=True)).T
-            self.ae.encoder.bias[deads] = 0.
-
+            self.ae.decoder.weight[:, deads] = (
+                sampled_vecs / sampled_vecs.norm(dim=-1, keepdim=True)
+            ).T
+            self.ae.encoder.bias[deads] = 0.0
 
             # reset Adam parameters for dead neurons
-            state_dict = self.optimizer.state_dict()['state']
+            state_dict = self.optimizer.state_dict()["state"]
             ## encoder weight
-            state_dict[1]['exp_avg'][deads] = 0.
-            state_dict[1]['exp_avg_sq'][deads] = 0.
+            state_dict[1]["exp_avg"][deads] = 0.0
+            state_dict[1]["exp_avg_sq"][deads] = 0.0
             ## encoder bias
-            state_dict[2]['exp_avg'][deads] = 0.
-            state_dict[2]['exp_avg_sq'][deads] = 0.
+            state_dict[2]["exp_avg"][deads] = 0.0
+            state_dict[2]["exp_avg_sq"][deads] = 0.0
             ## decoder weight
-            state_dict[3]['exp_avg'][:,deads] = 0.
-            state_dict[3]['exp_avg_sq'][:,deads] = 0.
-    
+            state_dict[3]["exp_avg"][:, deads] = 0.0
+            state_dict[3]["exp_avg_sq"][:, deads] = 0.0
+
     def loss(self, x, step: int, logging=False, **kwargs):
 
         sparsity_scale = self.sparsity_warmup_fn(step)
@@ -125,22 +144,23 @@ class StandardTrainer(SAETrainer):
             deads = (f == 0).all(dim=0)
             self.steps_since_active[deads] += 1
             self.steps_since_active[~deads] = 0
-        
+
         loss = recon_loss + self.l1_penalty * sparsity_scale * l1_loss
 
         if not logging:
             return loss
         else:
-            return namedtuple('LossLog', ['x', 'x_hat', 'f', 'losses'])(
-                x, x_hat, f,
+            return namedtuple("LossLog", ["x", "x_hat", "f", "losses"])(
+                x,
+                x_hat,
+                f,
                 {
-                    'l2_loss' : l2_loss.item(),
-                    'mse_loss' : recon_loss.item(),
-                    'sparsity_loss' : l1_loss.item(),
-                    'loss' : loss.item()
-                }
+                    "l2_loss": l2_loss.item(),
+                    "mse_loss": recon_loss.item(),
+                    "sparsity_loss": l1_loss.item(),
+                    "loss": loss.item(),
+                },
             )
-
 
     def update(self, step, activations):
         activations = activations.to(self.device)
@@ -152,28 +172,30 @@ class StandardTrainer(SAETrainer):
         self.scheduler.step()
 
         if self.resample_steps is not None and step % self.resample_steps == 0:
-            self.resample_neurons(self.steps_since_active > self.resample_steps / 2, activations)
+            self.resample_neurons(
+                self.steps_since_active > self.resample_steps / 2, activations
+            )
 
     @property
     def config(self):
         return {
-            'dict_class': 'AutoEncoder',
-            'trainer_class' : 'StandardTrainer',
-            'activation_dim': self.ae.activation_dim,
-            'dict_size': self.ae.dict_size,
-            'lr' : self.lr,
-            'l1_penalty' : self.l1_penalty,
-            'warmup_steps' : self.warmup_steps,
-            'resample_steps' : self.resample_steps,
-            'sparsity_warmup_steps' : self.sparsity_warmup_steps,
-            'steps' : self.steps,
-            'decay_start' : self.decay_start,
-            'seed' : self.seed,
-            'device' : self.device,
-            'layer' : self.layer,
-            'lm_name' : self.lm_name,
-            'wandb_name': self.wandb_name,
-            'submodule_name': self.submodule_name,
+            "dict_class": "AutoEncoder",
+            "trainer_class": "StandardTrainer",
+            "activation_dim": self.ae.activation_dim,
+            "dict_size": self.ae.dict_size,
+            "lr": self.lr,
+            "l1_penalty": self.l1_penalty,
+            "warmup_steps": self.warmup_steps,
+            "resample_steps": self.resample_steps,
+            "sparsity_warmup_steps": self.sparsity_warmup_steps,
+            "steps": self.steps,
+            "decay_start": self.decay_start,
+            "seed": self.seed,
+            "device": self.device,
+            "layer": self.layer,
+            "lm_name": self.lm_name,
+            "wandb_name": self.wandb_name,
+            "submodule_name": self.submodule_name,
         }
 
 
@@ -182,22 +204,26 @@ class StandardTrainerAprilUpdate(SAETrainer):
     Standard SAE training scheme following the Anthropic April update. Decoder column norms are NOT constrained to 1.
     This trainer does not support resampling or ghost gradients. This trainer will have fewer dead neurons than the standard trainer.
     """
-    def __init__(self,
-                 steps: int, # total number of steps to train for
-                 activation_dim: int,
-                 dict_size: int,
-                 layer: int,
-                 lm_name: str,
-                 dict_class=AutoEncoder,
-                 lr:float=1e-3,
-                 l1_penalty:float=1e-1,
-                 warmup_steps:int=1000, # lr warmup period at start of training
-                 sparsity_warmup_steps:Optional[int]=2000, # sparsity warmup period at start of training
-                 decay_start:Optional[int]=None, # decay learning rate after this many steps
-                 seed:Optional[int]=None,
-                 device=None,
-                 wandb_name:Optional[str]='StandardTrainerAprilUpdate',
-                 submodule_name:Optional[str]=None,
+
+    def __init__(
+        self,
+        steps: int,  # total number of steps to train for
+        activation_dim: int,
+        dict_size: int,
+        layer: int,
+        lm_name: str,
+        dict_class=AutoEncoder,
+        lr: float = 1e-3,
+        l1_penalty: float = 1e-1,
+        warmup_steps: int = 1000,  # lr warmup period at start of training
+        sparsity_warmup_steps: Optional[
+            int
+        ] = 2000,  # sparsity warmup period at start of training
+        decay_start: Optional[int] = None,  # decay learning rate after this many steps
+        seed: Optional[int] = None,
+        device=None,
+        wandb_name: Optional[str] = "StandardTrainerAprilUpdate",
+        submodule_name: Optional[str] = None,
     ):
         super().__init__(seed)
 
@@ -214,7 +240,7 @@ class StandardTrainerAprilUpdate(SAETrainer):
         self.ae = dict_class(activation_dim, dict_size)
 
         self.lr = lr
-        self.l1_penalty=l1_penalty
+        self.l1_penalty = l1_penalty
         self.warmup_steps = warmup_steps
         self.sparsity_warmup_steps = sparsity_warmup_steps
         self.steps = steps
@@ -222,14 +248,20 @@ class StandardTrainerAprilUpdate(SAETrainer):
         self.wandb_name = wandb_name
 
         if device is None:
-            self.device = 'cuda' if t.cuda.is_available() else 'cpu'
+            self.device = "cuda" if t.cuda.is_available() else "cpu"
         else:
             self.device = device
         self.ae.to(self.device)
 
         self.optimizer = t.optim.Adam(self.ae.parameters(), lr=lr)
 
-        lr_fn = get_lr_schedule(steps, warmup_steps, decay_start, resample_steps=None, sparsity_warmup_steps=sparsity_warmup_steps)
+        lr_fn = get_lr_schedule(
+            steps,
+            warmup_steps,
+            decay_start,
+            resample_steps=None,
+            sparsity_warmup_steps=sparsity_warmup_steps,
+        )
         self.scheduler = t.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lr_fn)
 
         self.sparsity_warmup_fn = get_sparsity_warmup_fn(steps, sparsity_warmup_steps)
@@ -248,16 +280,17 @@ class StandardTrainerAprilUpdate(SAETrainer):
         if not logging:
             return loss
         else:
-            return namedtuple('LossLog', ['x', 'x_hat', 'f', 'losses'])(
-                x, x_hat, f,
+            return namedtuple("LossLog", ["x", "x_hat", "f", "losses"])(
+                x,
+                x_hat,
+                f,
                 {
-                    'l2_loss' : l2_loss.item(),
-                    'mse_loss' : recon_loss.item(),
-                    'sparsity_loss' : l1_loss.item(),
-                    'loss' : loss.item()
-                }
+                    "l2_loss": l2_loss.item(),
+                    "mse_loss": recon_loss.item(),
+                    "sparsity_loss": l1_loss.item(),
+                    "loss": loss.item(),
+                },
             )
-
 
     def update(self, step, activations):
         activations = activations.to(self.device)
@@ -272,21 +305,20 @@ class StandardTrainerAprilUpdate(SAETrainer):
     @property
     def config(self):
         return {
-            'dict_class': 'AutoEncoder',
-            'trainer_class' : 'StandardTrainerAprilUpdate',
-            'activation_dim': self.ae.activation_dim,
-            'dict_size': self.ae.dict_size,
-            'lr' : self.lr,
-            'l1_penalty' : self.l1_penalty,
-            'warmup_steps' : self.warmup_steps,
-            'sparsity_warmup_steps' : self.sparsity_warmup_steps,
-            'steps' : self.steps,
-            'decay_start' : self.decay_start,
-            'seed' : self.seed,
-            'device' : self.device,
-            'layer' : self.layer,
-            'lm_name' : self.lm_name,
-            'wandb_name': self.wandb_name,
-            'submodule_name': self.submodule_name,
+            "dict_class": "AutoEncoder",
+            "trainer_class": "StandardTrainerAprilUpdate",
+            "activation_dim": self.ae.activation_dim,
+            "dict_size": self.ae.dict_size,
+            "lr": self.lr,
+            "l1_penalty": self.l1_penalty,
+            "warmup_steps": self.warmup_steps,
+            "sparsity_warmup_steps": self.sparsity_warmup_steps,
+            "steps": self.steps,
+            "decay_start": self.decay_start,
+            "seed": self.seed,
+            "device": self.device,
+            "layer": self.layer,
+            "lm_name": self.lm_name,
+            "wandb_name": self.wandb_name,
+            "submodule_name": self.submodule_name,
         }
-

@@ -5,7 +5,12 @@ from .gated_anneal import GatedAnnealTrainer
 from .top_k import TopKTrainer
 from .jumprelu import JumpReluTrainer
 from .batch_top_k import BatchTopKTrainer, BatchTopKSAE
-from .temporal_sequence_top_k import TemporalBatchTopKTrainer, TemporalBatchTopKSAE, TemporalMatryoshkaBatchTopKTrainer, TemporalMatryoshkaBatchTopKSAE
+from .temporal_sequence_top_k import (
+    TemporalBatchTopKTrainer,
+    TemporalBatchTopKSAE,
+    TemporalMatryoshkaBatchTopKTrainer,
+    TemporalMatryoshkaBatchTopKSAE,
+)
 from .matryoshka_batch_top_k import MatryoshkaBatchTopKTrainer, MatryoshkaBatchTopKSAE
 
 __all__ = [

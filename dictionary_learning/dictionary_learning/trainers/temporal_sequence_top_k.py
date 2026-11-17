@@ -35,7 +35,14 @@ def apply_temperature(probabilities: list[float], temperature: float) -> list[fl
 
 
 class TemporalMatryoshkaBatchTopKSAE(Dictionary, nn.Module):
-    def __init__(self, activation_dim: int, dict_size: int, k: int, group_sizes: list[int], temporal: bool):
+    def __init__(
+        self,
+        activation_dim: int,
+        dict_size: int,
+        k: int,
+        group_sizes: list[int],
+        temporal: bool,
+    ):
         super().__init__()
         self.activation_dim = activation_dim
         self.dict_size = dict_size
@@ -55,7 +62,9 @@ class TemporalMatryoshkaBatchTopKSAE(Dictionary, nn.Module):
 
         self.W_enc = nn.Parameter(t.empty(activation_dim, dict_size))
         self.b_enc = nn.Parameter(t.zeros(dict_size))
-        self.W_dec = nn.Parameter(t.nn.init.kaiming_uniform_(t.empty(dict_size, activation_dim)))
+        self.W_dec = nn.Parameter(
+            t.nn.init.kaiming_uniform_(t.empty(dict_size, activation_dim))
+        )
         self.b_dec = nn.Parameter(t.zeros(activation_dim))
 
         # We must transpose because we are using nn.Parameter, not nn.Linear
@@ -65,12 +74,18 @@ class TemporalMatryoshkaBatchTopKSAE(Dictionary, nn.Module):
         self.W_enc.data = self.W_dec.data.clone().T
         self.temporal = temporal
 
-    def encode(self, x: t.Tensor, return_active: bool = False, use_threshold: bool = True):
+    def encode(
+        self, x: t.Tensor, return_active: bool = False, use_threshold: bool = True
+    ):
 
-        post_relu_feat_acts_BF = nn.functional.relu((x - self.b_dec) @ self.W_enc + self.b_enc)
+        post_relu_feat_acts_BF = nn.functional.relu(
+            (x - self.b_dec) @ self.W_enc + self.b_enc
+        )
 
         if use_threshold:
-            encoded_acts_BF = post_relu_feat_acts_BF * (post_relu_feat_acts_BF > self.threshold)
+            encoded_acts_BF = post_relu_feat_acts_BF * (
+                post_relu_feat_acts_BF > self.threshold
+            )
         else:
             # Flatten and perform batch top-k
             flattened_acts = post_relu_feat_acts_BF.flatten()
@@ -109,7 +124,9 @@ class TemporalMatryoshkaBatchTopKSAE(Dictionary, nn.Module):
             self.threshold *= scale
 
     @classmethod
-    def from_pretrained(cls, path, k=None, temporal=False, device=None, **kwargs) -> "TemporalMatryoshkaBatchTopKSAE":
+    def from_pretrained(
+        cls, path, k=None, temporal=False, device=None, **kwargs
+    ) -> "TemporalMatryoshkaBatchTopKSAE":
         state_dict = t.load(path)
         activation_dim, dict_size = state_dict["W_enc"].shape
         if k is None:
@@ -119,7 +136,9 @@ class TemporalMatryoshkaBatchTopKSAE(Dictionary, nn.Module):
 
         group_sizes = state_dict["group_sizes"].tolist()
 
-        autoencoder = cls(activation_dim, dict_size, k=k, group_sizes=group_sizes, temporal=temporal)
+        autoencoder = cls(
+            activation_dim, dict_size, k=k, group_sizes=group_sizes, temporal=temporal
+        )
         autoencoder.load_state_dict(state_dict)
         if device is not None:
             autoencoder.to(device)
@@ -180,9 +199,9 @@ class TemporalMatryoshkaBatchTopKTrainer(SAETrainer):
         if group_weights is None:
             group_weights = [(1.0 / len(group_sizes))] * len(group_sizes)
 
-        assert len(group_sizes) == len(group_weights), (
-            "group_sizes and group_weights must have the same length"
-        )
+        assert len(group_sizes) == len(
+            group_weights
+        ), "group_sizes and group_weights must have the same length"
 
         self.group_fractions = group_fractions
         self.group_sizes = group_sizes
@@ -208,13 +227,19 @@ class TemporalMatryoshkaBatchTopKTrainer(SAETrainer):
 
         self.temp_alpha = temp_alpha
 
-        self.optimizer = t.optim.Adam(self.ae.parameters(), lr=self.lr, betas=(0.9, 0.999))
+        self.optimizer = t.optim.Adam(
+            self.ae.parameters(), lr=self.lr, betas=(0.9, 0.999)
+        )
 
         lr_fn = get_lr_schedule(steps, warmup_steps, decay_start, resample_steps=None)
         self.scheduler = t.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lr_fn)
 
         self.num_tokens_since_fired = t.zeros(dict_size, dtype=t.long, device=device)
-        self.logging_parameters = ["effective_l0", "dead_features", "pre_norm_auxk_loss"]
+        self.logging_parameters = [
+            "effective_l0",
+            "dead_features",
+            "pre_norm_auxk_loss",
+        ]
         self.effective_l0 = -1
         self.dead_features = -1
         self.pre_norm_auxk_loss = -1
@@ -232,19 +257,28 @@ class TemporalMatryoshkaBatchTopKTrainer(SAETrainer):
             auxk_acts, auxk_indices = auxk_latents.topk(k_aux, sorted=False)
 
             auxk_buffer_BF = t.zeros_like(post_relu_acts_BF)
-            auxk_acts_BF = auxk_buffer_BF.scatter_(dim=-1, index=auxk_indices, src=auxk_acts)
+            auxk_acts_BF = auxk_buffer_BF.scatter_(
+                dim=-1, index=auxk_indices, src=auxk_acts
+            )
 
             # We don't want to apply the bias
             x_reconstruct_aux = auxk_acts_BF @ self.ae.W_dec
             l2_loss_aux = (
-                (residual_BD.float() - x_reconstruct_aux.float()).pow(2).sum(dim=-1).mean()
+                (residual_BD.float() - x_reconstruct_aux.float())
+                .pow(2)
+                .sum(dim=-1)
+                .mean()
             )
 
             self.pre_norm_auxk_loss = l2_loss_aux
 
             # normalization from OpenAI implementation: https://github.com/openai/sparse_autoencoder/blob/main/sparse_autoencoder/kernels.py#L614
-            residual_mu = residual_BD.mean(dim=0)[None, :].broadcast_to(residual_BD.shape)
-            loss_denom = (residual_BD.float() - residual_mu.float()).pow(2).sum(dim=-1).mean()
+            residual_mu = residual_BD.mean(dim=0)[None, :].broadcast_to(
+                residual_BD.shape
+            )
+            loss_denom = (
+                (residual_BD.float() - residual_mu.float()).pow(2).sum(dim=-1).mean()
+            )
             normalized_auxk_loss = l2_loss_aux / loss_denom
 
             return normalized_auxk_loss.nan_to_num(0.0)
@@ -296,30 +330,42 @@ class TemporalMatryoshkaBatchTopKTrainer(SAETrainer):
             f_temp_chunks = t.split(f_temp, self.ae.group_sizes.tolist(), dim=1)
 
             x_temp_similarity = F.cosine_similarity(x[:, 0], x[:, 1], dim=-1)
-            
+
             W_dec_slice = W_dec_chunks[0]
             acts_slice = f_chunks[0]
             x_reconstruct = x_reconstruct + acts_slice @ W_dec_slice
 
-            l2_loss = ((x[:, 0] - x_reconstruct).pow(2).sum(dim=-1) * self.group_weights[0]).mean() 
-            
+            l2_loss = (
+                (x[:, 0] - x_reconstruct).pow(2).sum(dim=-1) * self.group_weights[0]
+            ).mean()
+
             total_l2_loss += l2_loss
             l2_losses = t.cat([l2_losses, l2_loss.unsqueeze(0)])
 
-            temp_loss = (t.abs(f_chunks[0] - f_temp_chunks[0]).sum(dim=-1) * x_temp_similarity * self.group_weights[0]).mean()
+            temp_loss = (
+                t.abs(f_chunks[0] - f_temp_chunks[0]).sum(dim=-1)
+                * x_temp_similarity
+                * self.group_weights[0]
+            ).mean()
 
             ## Contrastive loss
             if self.contrastive:
                 # x_temp_similarity = x_temp_similarity.unsqueeze(0)
 
-                logits_per_curr_t =  (f_chunks[0] @ f_temp_chunks[0].T)#*(x_temp_similarity.T@t.ones_like(x_temp_similarity)).T
-                logits_per_cumsum_t = logits_per_curr_t.T#*(x_temp_similarity.T@t.ones_like(x_temp_similarity))
+                logits_per_curr_t = (
+                    f_chunks[0] @ f_temp_chunks[0].T
+                )  # *(x_temp_similarity.T@t.ones_like(x_temp_similarity)).T
+                logits_per_cumsum_t = (
+                    logits_per_curr_t.T
+                )  # *(x_temp_similarity.T@t.ones_like(x_temp_similarity))
 
-                labels = t.arange(logits_per_curr_t.shape[0], device=self.device, dtype=t.long)            
+                labels = t.arange(
+                    logits_per_curr_t.shape[0], device=self.device, dtype=t.long
+                )
 
                 temp_loss = (
-                    F.cross_entropy(logits_per_curr_t, labels) +
-                    F.cross_entropy(logits_per_cumsum_t, labels)
+                    F.cross_entropy(logits_per_curr_t, labels)
+                    + F.cross_entropy(logits_per_cumsum_t, labels)
                 ) / 2
 
             start = 1
@@ -333,9 +379,13 @@ class TemporalMatryoshkaBatchTopKTrainer(SAETrainer):
             x_reconstruct = x_reconstruct + acts_slice @ W_dec_slice
 
             if self.temporal:
-                l2_loss = (x[:, 0] - x_reconstruct).pow(2).sum(dim=-1).mean() * self.group_weights[i]
+                l2_loss = (x[:, 0] - x_reconstruct).pow(2).sum(
+                    dim=-1
+                ).mean() * self.group_weights[i]
             else:
-                l2_loss = (x - x_reconstruct).pow(2).sum(dim=-1).mean() * self.group_weights[i]
+                l2_loss = (x - x_reconstruct).pow(2).sum(
+                    dim=-1
+                ).mean() * self.group_weights[i]
             total_l2_loss += l2_loss
             l2_losses = t.cat([l2_losses, l2_loss.unsqueeze(0)])
 
@@ -354,9 +404,10 @@ class TemporalMatryoshkaBatchTopKTrainer(SAETrainer):
         self.num_tokens_since_fired += num_tokens_in_step
         self.num_tokens_since_fired[did_fire] = 0
 
-        auxk_loss = self.get_auxiliary_loss((x - x_reconstruct).detach(), post_relu_acts_BF)
+        auxk_loss = self.get_auxiliary_loss(
+            (x - x_reconstruct).detach(), post_relu_acts_BF
+        )
         loss = mean_l2_loss + self.auxk_alpha * auxk_loss + self.temp_alpha * temp_loss
-
 
         if not logging:
             return loss
@@ -389,7 +440,10 @@ class TemporalMatryoshkaBatchTopKTrainer(SAETrainer):
 
         # We must transpose because we are using nn.Parameter, not nn.Linear
         self.ae.W_dec.grad = remove_gradient_parallel_to_decoder_directions(
-            self.ae.W_dec.T, self.ae.W_dec.grad.T, self.ae.activation_dim, self.ae.dict_size
+            self.ae.W_dec.T,
+            self.ae.W_dec.grad.T,
+            self.ae.activation_dim,
+            self.ae.dict_size,
         ).T
         t.nn.utils.clip_grad_norm_(self.ae.parameters(), 1.0)
 
@@ -447,7 +501,8 @@ class TemporalMatryoshkaBatchTopKTrainer(SAETrainer):
                 break
 
         return guess
-    
+
+
 class TemporalBatchTopKSAE(Dictionary, nn.Module):
     def __init__(self, activation_dim: int, dict_size: int, k: int, temporal: bool):
         super().__init__()
@@ -469,14 +524,18 @@ class TemporalBatchTopKSAE(Dictionary, nn.Module):
         self.b_dec = nn.Parameter(t.zeros(activation_dim))
         self.temporal = temporal
 
-    def encode(self, x: t.Tensor, return_active: bool = False, use_threshold: bool = True):
+    def encode(
+        self, x: t.Tensor, return_active: bool = False, use_threshold: bool = True
+    ):
         if self.temporal:
-            x = x[:, 0] #FIXME: ignoring temporal part
+            x = x[:, 0]  # FIXME: ignoring temporal part
 
         post_relu_feat_acts_BF = nn.functional.relu(self.encoder(x - self.b_dec))
 
         if use_threshold:
-            encoded_acts_BF = post_relu_feat_acts_BF * (post_relu_feat_acts_BF > self.threshold)
+            encoded_acts_BF = post_relu_feat_acts_BF * (
+                post_relu_feat_acts_BF > self.threshold
+            )
         else:
             # Flatten and perform batch top-k
             flattened_acts = post_relu_feat_acts_BF.flatten()
@@ -489,7 +548,7 @@ class TemporalBatchTopKSAE(Dictionary, nn.Module):
             )
 
         ### CHANGED LINES
-        # # Sum instead of flatten 
+        # # Sum instead of flatten
         # sequence_sum_acts = post_relu_feat_acts_BF.sum(1)
         # sequence_topk = sequence_sum_acts.topk(self.k * 128, sorted=False, dim=-1)
         # mask = (
@@ -526,7 +585,9 @@ class TemporalBatchTopKSAE(Dictionary, nn.Module):
             self.threshold *= scale
 
     @classmethod
-    def from_pretrained(cls, path, k=None, temporal=False, device=None, **kwargs) -> "BatchTopKSAE":
+    def from_pretrained(
+        cls, path, k=None, temporal=False, device=None, **kwargs
+    ) -> "BatchTopKSAE":
         state_dict = t.load(path)
         dict_size, activation_dim = state_dict["encoder.weight"].shape
         if k is None:
@@ -600,12 +661,18 @@ class TemporalBatchTopKTrainer(SAETrainer):
         self.dead_feature_threshold = 10_000_000
         self.top_k_aux = activation_dim // 2  # Heuristic from B.1 of the paper
         self.num_tokens_since_fired = t.zeros(dict_size, dtype=t.long, device=device)
-        self.logging_parameters = ["effective_l0", "dead_features", "pre_norm_auxk_loss"]
+        self.logging_parameters = [
+            "effective_l0",
+            "dead_features",
+            "pre_norm_auxk_loss",
+        ]
         self.effective_l0 = -1
         self.dead_features = -1
         self.pre_norm_auxk_loss = -1
 
-        self.optimizer = t.optim.Adam(self.ae.parameters(), lr=self.lr, betas=(0.9, 0.999))
+        self.optimizer = t.optim.Adam(
+            self.ae.parameters(), lr=self.lr, betas=(0.9, 0.999)
+        )
 
         lr_fn = get_lr_schedule(steps, warmup_steps, decay_start=decay_start)
 
@@ -624,19 +691,28 @@ class TemporalBatchTopKTrainer(SAETrainer):
             auxk_acts, auxk_indices = auxk_latents.topk(k_aux, sorted=False)
 
             auxk_buffer_BF = t.zeros_like(post_relu_acts_BF)
-            auxk_acts_BF = auxk_buffer_BF.scatter_(dim=-1, index=auxk_indices, src=auxk_acts)
+            auxk_acts_BF = auxk_buffer_BF.scatter_(
+                dim=-1, index=auxk_indices, src=auxk_acts
+            )
 
             # Note: decoder(), not decode(), as we don't want to apply the bias
             x_reconstruct_aux = self.ae.decoder(auxk_acts_BF)
             l2_loss_aux = (
-                (residual_BD.float() - x_reconstruct_aux.float()).pow(2).sum(dim=-1).mean()
+                (residual_BD.float() - x_reconstruct_aux.float())
+                .pow(2)
+                .sum(dim=-1)
+                .mean()
             )
 
             self.pre_norm_auxk_loss = l2_loss_aux
 
             # normalization from OpenAI implementation: https://github.com/openai/sparse_autoencoder/blob/main/sparse_autoencoder/kernels.py#L614
-            residual_mu = residual_BD.mean(dim=0)[None, :].broadcast_to(residual_BD.shape)
-            loss_denom = (residual_BD.float() - residual_mu.float()).pow(2).sum(dim=-1).mean()
+            residual_mu = residual_BD.mean(dim=0)[None, :].broadcast_to(
+                residual_BD.shape
+            )
+            loss_denom = (
+                (residual_BD.float() - residual_mu.float()).pow(2).sum(dim=-1).mean()
+            )
             normalized_auxk_loss = l2_loss_aux / loss_denom
 
             return normalized_auxk_loss.nan_to_num(0.0)
@@ -707,7 +783,11 @@ class TemporalBatchTopKTrainer(SAETrainer):
                 x,
                 x_hat,
                 f,
-                {"l2_loss": l2_loss.item(), "auxk_loss": auxk_loss.item(), "loss": loss.item()},
+                {
+                    "l2_loss": l2_loss.item(),
+                    "auxk_loss": auxk_loss.item(),
+                    "loss": loss.item(),
+                },
             )
 
     def update(self, step, x):

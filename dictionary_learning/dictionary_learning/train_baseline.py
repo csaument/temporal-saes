@@ -1,9 +1,16 @@
 from nnsight import LanguageModel
 from dictionary_learning import ActivationBuffer, AutoEncoder, EvalActivationBuffer
 from dictionary_learning.trainers import StandardTrainer
-from dictionary_learning.trainers import MatryoshkaBatchTopKTrainer, MatryoshkaBatchTopKSAE
+from dictionary_learning.trainers import (
+    MatryoshkaBatchTopKTrainer,
+    MatryoshkaBatchTopKSAE,
+)
 from dictionary_learning.training import trainSAE
-from dictionary_learning.utils import load_dictionary, hf_dataset_to_generator, get_submodule
+from dictionary_learning.utils import (
+    load_dictionary,
+    hf_dataset_to_generator,
+    get_submodule,
+)
 from dictionary_learning.evaluation import evaluate
 from datasets import load_dataset
 import argparse
@@ -12,6 +19,7 @@ import random
 import demo_config
 import json
 import os
+
 
 @t.no_grad()
 def eval_saes(
@@ -64,7 +72,7 @@ def eval_saes(
     activation_dim = trainer_cfg["trainer"]["activation_dim"]
 
     activation_buffer = EvalActivationBuffer(
-        data, #iter(input_strings)
+        data,  # iter(input_strings)
         model,
         submodule,
         n_ctxs=1,
@@ -102,6 +110,7 @@ def eval_saes(
     # return the final eval_results for testing purposes
     return eval_results
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--activation-store-dir", type=str, default="activations")
@@ -128,7 +137,9 @@ if __name__ == "__main__":
     parser.add_argument("--remove_bos", action="store_true")
     parser.add_argument("--run-name", type=str, default=None)
     parser.add_argument("--resample-steps", type=int, default=None)
-    parser.add_argument("--save_checkpoints", action="store_true", help="save checkpoints")
+    parser.add_argument(
+        "--save_checkpoints", action="store_true", help="save checkpoints"
+    )
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--pretrained", type=str, default=None)
     parser.add_argument("--encoder-layers", type=int, default=None, nargs="+")
@@ -136,41 +147,44 @@ if __name__ == "__main__":
         "--dataset", type=str, nargs="+", default=["fineweb", "lmsys_chat"]
     )
 
-    parser.add_argument("--save-path", type=str, help="Checkpoints directory for trained SAEs")
+    parser.add_argument(
+        "--save-path", type=str, help="Checkpoints directory for trained SAEs"
+    )
     args = parser.parse_args()
 
     device = "cuda:0"
-    model_name =  args.model # can be any Huggingface model
+    model_name = args.model  # can be any Huggingface model
 
     model = LanguageModel(
         model_name,
         device_map=device,
     )
 
-
     if hasattr(model, "model"):
-        submodule = model.model.layers[args.layer] # gemma
+        submodule = model.model.layers[args.layer]  # gemma
     elif hasattr(model, "gpt_neox"):
-        submodule = model.gpt_neox.layers[args.layer] 
+        submodule = model.gpt_neox.layers[args.layer]
     else:
         print("model doesnt have .model or .gpt_neox attr, check how to access layers")
         exit(1)
-    activation_dim = model.config.hidden_size #768 # output dimension of the MLP
+    activation_dim = model.config.hidden_size  # 768 # output dimension of the MLP
     dictionary_size = 16384
 
     # data must be an iterator that outputs strings
-    data = iter(load_dataset("monology/pile-uncopyrighted", split="train", streaming=True))
+    data = iter(
+        load_dataset("monology/pile-uncopyrighted", split="train", streaming=True)
+    )
 
     buffer = ActivationBuffer(
         data=data,
         model=model,
         submodule=submodule,
-        d_submodule=activation_dim, # output dimension of the model component
+        d_submodule=activation_dim,  # output dimension of the model component
         n_ctxs=1000,  # you can set this higher or lower depending on your available memory
         device=device,
-        remove_bos=True, # FIXME: removed bos
+        remove_bos=True,  # FIXME: removed bos
         temporal=False,
-        ctx_len=256
+        ctx_len=256,
     )  # buffer will yield batches of tensors of dimension = submodule's output dimension
 
     trainer_cfg = {
@@ -190,14 +204,13 @@ if __name__ == "__main__":
         "lm_name": args.model,
         "group_fractions": [0.2, 0.8],
         "group_weights": [0.2, 0.8],
-
     }
 
     if args.save_checkpoints:
         # Creates checkpoints at 0.0%, 0.1%, 0.316%, 1%, 3.16%, 10%, 31.6%, 100% of training
         # desired_checkpoints = t.logspace(-3, 0, 7).tolist()
         # desired_checkpoints = [0.0] + desired_checkpoints[:-1]
-        desired_checkpoints = [0.04, 0.08, 0.2, 0.32, 0.4] ## for 50k steps
+        desired_checkpoints = [0.04, 0.08, 0.2, 0.32, 0.4]  ## for 50k steps
         # desired_checkpoints = [0.01, 0.02, 0.05, 0.08, 0.1, 0.5]
         desired_checkpoints.sort()
         print(f"desired_checkpoints: {desired_checkpoints}")
@@ -207,7 +220,6 @@ if __name__ == "__main__":
         print(f"save_steps: {save_steps}")
     else:
         save_steps = None
-
 
     # train the sparse autoencoder (SAE)
     trainSAE(
@@ -222,7 +234,9 @@ if __name__ == "__main__":
         save_steps=save_steps,
     )
 
-    ae, trainer_cfg = load_dictionary(f"../../checkpoints/{args.run_name}/trainer_0", device)
+    ae, trainer_cfg = load_dictionary(
+        f"../../checkpoints/{args.run_name}/trainer_0", device
+    )
     ae.temporal = False
     eval_saes(
         args.model,
