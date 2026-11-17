@@ -2,40 +2,50 @@
 name = "temporal-saes"
 version = "0.1.0"
 description = ""
-authors = [
-    {name = "Alex Oesterling"}
-]
+authors = [{ name = "Alex Oesterling" }]
+requires-python = ">=3.11,<3.13"
 readme = "README.md"
-
-[tool.poetry]
-packages = [
-    { include = "src" },
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "torch",
+    "torchaudio",
+    "torchvision",
+    "nnsight>=0.3.0,<0.4.0",
+    "dictionary-learning",
+    "scikit-learn>=1.7.1,<2",
+    "numpy>=1.26,<2",
+    "spacy>=3.8.7,<4",
+    "datasets<4.0.0",
+    "tqdm>=4.67.1,<5",
+    "en-core-web-sm",
+    "python-dotenv>=1.1.1,<2",
+    "matplotlib>=3.10.7,<4",
+    "seaborn>=0.13.2,<0.14",
+    "plotly>=6.3.1,<7",
+    "transformers>=4.57.1,<5",
 ]
 
-[tool.poetry.dependencies]
-python = ">=3.11 <3.13"
-torch = {source="torch"}
-torchaudio = {source="torch"}
-torchvision = {source="torch"}
-nnsight = ">=0.3.0,<0.4.0"
-dictionary-learning = {path = "dictionary_learning", develop = true}
-scikit-learn = "^1.7.1"
-numpy = "^1.26"
-spacy = "^3.8.7"
-datasets = "<4.0.0"
-tqdm = "^4.67.1"
-en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"}
-python-dotenv = "^1.1.1"
-matplotlib = "^3.10.7"
-seaborn = "^0.13.2"
-plotly = "^6.3.1"
-transformers = "^4.57.1"
+[tool.uv]
 
-[[tool.poetry.source]]
+[[tool.uv.index]]
 name = "torch"
 url = "https://download.pytorch.org/whl/cu128"
-priority = "supplemental"
+
+[tool.uv.sources]
+torch = { index = "torch" }
+torchaudio = { index = "torch" }
+torchvision = { index = "torch" }
+dictionary-learning = { path = "dictionary_learning", editable = true }
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+
+[tool.uv.build-backend]
+module-name = ["src"]
+module-root = ""
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.13.9,<0.14.0"]
+build-backend = "uv_build"
