@@ -116,6 +116,7 @@ if __name__ == "__main__":
     parser.add_argument("--activation-store-dir", type=str, default="activations")
     parser.add_argument("--model", type=str, default="EleutherAI/pythia-160m")
     parser.add_argument("--layer", type=int, default=8)
+    parser.add_argument("--dict-size", type=int, default=16384)
     parser.add_argument("--wandb-entity", type=str, default="")
     parser.add_argument("--wandb-project", type=str, default="temporal")
     parser.add_argument("--disable-wandb", action="store_true")
@@ -157,6 +158,7 @@ if __name__ == "__main__":
 
     model = LanguageModel(
         model_name,
+        tokenizer=model_name,
         device_map=device,
     )
 
@@ -168,7 +170,7 @@ if __name__ == "__main__":
         print("model doesnt have .model or .gpt_neox attr, check how to access layers")
         exit(1)
     activation_dim = model.config.hidden_size  # 768 # output dimension of the MLP
-    dictionary_size = 16384
+    dictionary_size = args.dict_size
 
     # data must be an iterator that outputs strings
     data = iter(
@@ -199,6 +201,7 @@ if __name__ == "__main__":
         + (f"-{args.run_name}" if args.run_name is not None else ""),
         "steps": args.max_steps,
         "k": args.k,
+        "seed": args.seed,
         # "auxk_alpha": 0.0,
         "layer": args.layer,
         "lm_name": args.model,
